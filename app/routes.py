@@ -4,15 +4,19 @@ from services.embeddings import get_embeddings
 from celery_config import make_celery
 from sklearn.metrics.pairwise import cosine_similarity
 
+
+from tasks import sleep_test
+
+
 import json
 
 app = Flask(__name__)
-app.config.update(
-    CELERY_BROKER_URL='redis://localhost:6379/0',
-    CELERY_RESULT_BACKEND='redis://localhost:6379/0'
-)
+# app.config.update(
+#     CELERY_BROKER_URL='redis://localhost:6379/0',
+#     CELERY_RESULT_BACKEND='redis://localhost:6379/0'
+# )
 
-celery = make_celery(app)
+# celery = make_celery(app)
 
 @app.route('/') 
 def hello_world():
@@ -88,6 +92,12 @@ def suggest_supervisors_for_students(students_df, supervisors_df):
             supervisor_suggestion_count[sup_id] += 1
 
     return student_supervisor_suggestions
+
+@app.route('/sleep_test', methods=['POST'])
+def sleep_test():
+    task= sleep_test.delay()
+    return {"task": task.id}
+
 
 
 if __name__ == '__main__':
