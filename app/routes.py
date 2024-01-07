@@ -1,104 +1,71 @@
-from flask import Flask, jsonify
-from services.preprcessing import read_and_preprocess_student_data, read_and_preprocess_supervisor_data
-from services.embeddings import get_embeddings
-from celery_config import make_celery
-from sklearn.metrics.pairwise import cosine_similarity
+from flask import Flask, jsonify, request
 
-
-from tasks import sleep_test
-
-
-import json
+from tasks import sleep_test, embed
 
 app = Flask(__name__)
-# app.config.update(
-#     CELERY_BROKER_URL='redis://localhost:6379/0',
-#     CELERY_RESULT_BACKEND='redis://localhost:6379/0'
-# )
-
-# celery = make_celery(app)
 
 @app.route('/') 
 def hello_world():
     return 'Hello, World!'
 
-@app.route('/process-data', methods=['GET', 'POST'])
+@app.route('/test', methods=['POST'])
+def json_method():
+    # Check if the request has the JSON content-type
+    if request.is_json:
+        # Parse the JSON data from request
+        data = request.get_json()
+        
+        # Access the data using the keys
+        students = data['student']
+        supervisors = data['supervisor']
+
+        # Process the data as needed (here, we're just returning it back)
+        return jsonify({'message': 'JSON received', 'students': students, 'supervisors': supervisors}), 200
+    else:
+        # Return an error message if the received data is not in JSON format
+        return jsonify({'message': 'Request must be JSON'}), 400
+
+@app.route('/process-data', methods=['POST'])
 def process_data():
-    # Example file paths - adjust as needed
-    student_file_path = '../../List_of_Topics.json'
-    supervisor_file_path = '../../List_of_research_areas.json'
+    if not request.is_json:
+        return jsonify({'message': 'Request must be JSON'}), 400
 
-    # Preprocess the data
-    students_df = read_and_preprocess_student_data(student_file_path)
-    supervisors_df = read_and_preprocess_supervisor_data(supervisor_file_path)
+    data = request.get_json()
 
-        # Define the number of examples you want to process
-    number_of_student_examples = students_df.shape[0]
-    number_of_supervisor_examples = supervisors_df.shape[0]
-
-    # Check if we have enough data to sample, if not take the maximum possible
-    number_of_student_examples = min(number_of_student_examples, len(students_df))
-    number_of_supervisor_examples = min(number_of_supervisor_examples, len(supervisors_df))
-
-    # Sample a subset of your dataframes
-    students_sampled = students_df.sample(n=number_of_student_examples, random_state=1)
-    supervisors_sampled = supervisors_df.sample(n=number_of_supervisor_examples, random_state=1)
-
-    # Apply the get_embeddings function to your sampled text series.
-    students_sampled['embeddings'] = get_embeddings(students_sampled['studentTopic'])
-    supervisors_sampled['embeddings'] = get_embeddings(supervisors_sampled['researchArea'])
+    if 'student' not in data or 'supervisor' not in data:
+        return jsonify({'message': 'Missing student or supervisor data in request'}), 400
     
-    # Call the function to suggest supervisors for students
-    supervisor_suggestions = suggest_supervisors_for_students(students_sampled, supervisors_sampled)
-
-    # Return clustering results along with student and supervisor data
-    return jsonify({"suggestion": supervisor_suggestions })
-
-
-def calculate_individual_compatibility(student, supervisor):
-    # Calculate the compatibility between a student and a supervisor
-    return cosine_similarity([student['embeddings']], [supervisor['embeddings']])[0][0]
-
-def suggest_supervisors_for_students(students_df, supervisors_df):    
-    student_supervisor_suggestions = {}
-    supervisor_suggestion_count = {sup_id: 0 for sup_id in supervisors_df['id']}
-
-    for _, student in students_df.iterrows():
-        # Calculate compatibility with each supervisor
-        compatibilities = {
-            supervisor['id']: calculate_individual_compatibility(student, supervisor)
-            for _, supervisor in supervisors_df.iterrows()
-        }
-
-        # Sort supervisors by compatibility and filter out over-suggested ones
-        sorted_and_filtered_supervisors = [
-            sup_id for sup_id in sorted(compatibilities, key=compatibilities.get, reverse=True)
-            if supervisor_suggestion_count[sup_id] < 2 * int(supervisors_df[supervisors_df['id'] == sup_id]['availableSlot'].iloc[0])
-        ][:5]
-
-        # Add student details and top 5 supervisors to the student's suggestions
-        student_supervisor_suggestions[student['id']] = {
-            'studentTopic': student['studentTopic'],
-            'numberOfSuggestions': len(sorted_and_filtered_supervisors),
-            'supervisorSuggestions': []
-        }
-        for sup_id in sorted_and_filtered_supervisors:
-            student_supervisor_suggestions[student['id']]['supervisorSuggestions'].append({
-                'supervisorId': sup_id,
-                'compatibilityScore': compatibilities[sup_id],
-                'researchArea': supervisors_df[supervisors_df['id'] == sup_id]['researchArea'].iloc[0],
-                'availableSlot': int(supervisors_df[supervisors_df['id'] == sup_id]['availableSlot'].iloc[0])  # Convert to Python int
-            })
-            supervisor_suggestion_count[sup_id] += 1
-
-    return student_supervisor_suggestions
-
-@app.route('/sleep_test', methods=['POST'])
-def sleep_test():
-    task= sleep_test.delay()
+    task = embed.delay(data)
     return {"task": task.id}
 
 
+@app.route('/sleep_test', methods=['POST'])
+def sleep_test_route():
+    task = sleep_test.delay()
+    return {"task": task.id}
 
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.route('/task/<task_id>', methods=['GET'])
+def get_task_status(task_id):
+    task = embed.AsyncResult(task_id)
+    
+    if task.state == 'PENDING':
+        response = {
+            'state': task.state,
+            'status': 'Task is pending'
+        }
+    elif task.state != 'FAILURE':
+        response = {
+            'state': task.state,
+            'result': task.result
+        }
+    else:
+        response = {
+            'state': task.state,
+            'status': str(task.info),  
+        }
+    return jsonify(response)
+
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000, debug=True)
+

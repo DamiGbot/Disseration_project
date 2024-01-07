@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 def read_and_preprocess_student_data(filepath):
     """
