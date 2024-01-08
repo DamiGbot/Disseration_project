@@ -1,24 +1,33 @@
 version: "3"
 services:
   redis:
-    image: redis
-    ports:
-      - "6379:6379"
+    image: redis:latest
+    networks:
+      - internal
 
   web_app:
     build: .
+    image: dissertationmatching.azurecr.io/web_app:latest
     ports:
       - "5000:5000"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - redis
+    networks:
+      - internal
 
   celery_worker:
     build: .
+    image: dissertationmatching.azurecr.io/web_app:latest
     command: celery -A app.tasks worker --loglevel=info
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - redis
       - web_app
+    networks:
+      - internal
+
+networks:
+  internal:

@@ -10,3 +10,14 @@ dist/
 venv/
 .venv/
 .env
+
+# Docker related
+docker-compose.yml
+Dockerfile
+*.dockerignore
+.docker/
+*.tar
+*.tar.gz
+
+# Ignore default Docker volumes
+volumes/

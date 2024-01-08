@@ -6,10 +6,13 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt /app/
-# RUN apk add py3-scikit-learn
 RUN pip install --upgrade pip
 RUN pip install scikit-learn
-RUN pip install  -r requirements.txt
+RUN pip install -r requirements.txt
+
+# Create a non-root user and switch to it for security
+RUN useradd -m myuser
+USER myuser
 
 # Copy the rest of your application's code
 COPY . /app/
