@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 
-from tasks import sleep_test, embed
+from app.tasks import sleep_test, embed
 
 app = Flask(__name__)
 
