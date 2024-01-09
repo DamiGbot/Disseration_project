@@ -1,4 +1,8 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, abort
+from werkzeug.exceptions import HTTPException, InternalServerError
+import logging
+import traceback
+from logging.handlers import RotatingFileHandler
 
 from app.tasks import sleep_test, embed
 
@@ -7,6 +11,48 @@ app = Flask(__name__)
 @app.route('/') 
 def hello_world():
     return 'Hello, World!'
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e):
+    """Handle HTTP exceptions"""
+    response = e.get_response()
+    response.data = jsonify({
+        "code": e.code,
+        "name": e.name,
+        "description": e.description,
+    }).data
+    response.content_type = "application/json"
+    return response
+
+
+def setup_logging():
+    handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=1)
+    handler.setLevel(logging.INFO)
+    app.logger.addHandler(handler)
+    app.logger.setLevel(logging.INFO)
+
+setup_logging()
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    trace = traceback.format_exc()
+    app.logger.error(f'Unhandled Exception: {e}\n{trace}')
+    return jsonify(error="An internal error occurred."), 500 
+
+def validate_json(*expected_keys):
+    def decorator(f):
+        def wrapper(*args, **kwargs):
+            if not request.is_json:
+                abort(400, description="Invalid content type. JSON required.")
+            json_data = request.get_json()
+            for key in expected_keys:
+                if key not in json_data:
+                    abort(400, description=f"Missing key: {key}")
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
 
 @app.route('/test', methods=['POST'])
 def json_method():
@@ -26,10 +72,8 @@ def json_method():
         return jsonify({'message': 'Request must be JSON'}), 400
 
 @app.route('/process-data', methods=['POST'])
+@validate_json('student', 'supervisor')
 def process_data():
-    if not request.is_json:
-        return jsonify({'message': 'Request must be JSON'}), 400
-
     data = request.get_json()
 
     if 'student' not in data or 'supervisor' not in data:

@@ -68,8 +68,9 @@ def embed(data):
       # print(supervisor_suggestions)
       return supervisor_suggestions
     except Exception as e:
-      logger.error(f"Error in task: {e}")
-      return {'error': str(e)}
+      logger.error(f"Error in embed task: {e}\n{traceback.format_exc()}")
+      # Consider how to communicate this back to the client, if necessary
+      return {'error': 'An internal server error occurred.'}
 
 
 # Configuration
