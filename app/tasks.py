@@ -164,6 +164,7 @@ def suggest_supervisors_for_students(students_df, supervisors_df):
 
         student_supervisor_suggestions[student['id']] = {
             'studentTopic': student['studentTopic'],
+            'studentID': student['id'],
             'supervisorSuggestions': []
         }
 
